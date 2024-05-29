@@ -1,90 +1,38 @@
 import socket
+import pickle
+import random
+import os
 
-def get_part_key(key_publ_2, key_prim, key_publ_1):
-    key_part_2 = key_publ_2 ** key_prim % key_publ_1
-    return key_part_2
+HOST = '127.0.0.1'
+PORT = 8088
 
-def get_full_key(key_part_1, key_prim, key_publ_1):
-    key_full = key_part_1 ** key_prim % key_publ_1
-    return key_full
+# Load or generate p, g, a from a file
+if os.path.exists('client_public_key.txt'):
+    with open('client_public_key.txt', 'r') as file:
+        p, g, a = map(int, file.readline().split())
+else:
+    p, g, a = random.randint(2, 73), random.randint(2, 73), random.randint(2, 10)
+    with open('client_public_key.txt', 'w') as file:
+        file.write(f"{p} {g} {a}")
 
-def encoding (msg, key):
-    lst = list(msg)
-    for i in range(len(lst)):
-        variab = ord(lst[i]) + key
-        variab = chr(variab)
-        lst[i] = variab
-    return(''.join(lst))
-
-def decoding (msg, key):
-    lst = list(msg)
-    for i in range(len(lst)):
-        variab = ord(lst[i]) - key
-        variab = chr(variab)
-        lst[i] = variab
-    return(''.join(lst))
-
-def generation(flagg, key_prim, key_publ_2):
-    global flag
-    while flagg<3:
-        flagg+= 1
-        if flagg == 1:
-                msg = str(key_publ_2)
-                sock.send(msg.encode())
-                try:
-                    key_publ_1 = int(sock.recv(1024))
-                except ValueError:
-                    print("Ошибка: данный ключ является некорректным")
-                    flag = False
-                    break
-        if flagg == 2:
-                key_part_2 = get_part_key(key_publ_2, key_prim, key_publ_1)
-                msg = str(key_part_2)
-                sock.send(msg.encode())
-                key_part_1 = int(sock.recv(1024))
-        if flagg == 3:
-                key_full_2 = get_full_key(key_part_1, key_prim, key_publ_1)
-                print(key_part_1, key_prim, key_publ_1)
-                msg = str(key_full_2)
-                sock.send(msg.encode())
-                key_full_1 = int(sock.recv(1024))
-                print(key_full_1)
-                with open ('client_keys.txt','w') as f:
-                    f.write(str(key_full_1))
-    return key_full_1
-
-def send_recv(sock, key_full_2):
-    msg = input('Введите сообщение: ')
-    encod_msg = encoding(msg, key_full_2)
-    sock.send(encod_msg.encode())
-    msg = sock.recv(1024).decode()
-    decod_msg= decoding(msg,key_full_2)
-    print('Сообщение от сервера: ', decod_msg)
-    return decod_msg
-
-flag = True
 sock = socket.socket()
-sock.setblocking(5)
-sock.connect(('localhost', 9090))
-print('Соединение')
+sock.connect((HOST, PORT))
 
-try:
-    with open ('client_keys.txt','r') as f:
-        for line in f:
-            key_full_1 = int(line)
-except:
-    key_prim = 199
-    key_publ_2 = 197
-    flagg= 0
-    msg = ''
-    key_full_1 = generation(flagg, key_prim, key_publ_2)
+A = (g ** a) % p
+sock.send(pickle.dumps((p, g, A)))
 
-if flag:
-    port = send_recv(sock, key_full_1)
-    sock.close()
-    sock = socket.socket()
-    sock.connect(('localhost', 1024))
-    while True:
-        send_recv(sock, key_full_1)
+B = pickle.loads(sock.recv(1024))
+
+K = (B ** a) % p
+print("Calculated client key:", K)
+
+message = "Hello, server!"
+encrypted_message = ''.join([chr(ord(char) + K) for char in message])
+print(f"Encrypted message: {encrypted_message}")
+sock.send(encrypted_message.encode())
+
+encrypted_response = sock.recv(1024).decode()
+decrypted_response = ''.join([chr(ord(char) - K) for char in encrypted_response])
+print("Server's response:", decrypted_response)
+
 sock.close()
-print('Соединение остановлено')
